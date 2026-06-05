@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+
+set -u
+
+if [[ "${1:-}" == __cmd:* ]]; then
+  cmd="${1#__cmd:}"
+  shift
+else
+  cmd="$(basename "$0")"
+fi
+
+case "$cmd" in
+  date)
+    case "${1:-}" in
+      +%Y-%m-%d)
+        printf '2026-06-01\n'
+        ;;
+      +%Y-%m-%d-%H%M%S)
+        printf '2026-06-01-120000\n'
+        ;;
+      *)
+        printf 'Mon Jun  1 12:00:00 PDT 2026\n'
+        ;;
+    esac
+    ;;
+  id)
+    if [[ "${1:-}" == "-un" ]]; then
+      printf 'fixtureuser\n'
+    else
+      printf 'uid=501(fixtureuser) gid=20(staff) groups=20(staff)\n'
+    fi
+    ;;
+  hostname)
+    printf 'fixture-host.local\n'
+    ;;
+  sysctl)
+    if [[ "${1:-}" == "-n" && "${2:-}" == "hw.model" ]]; then
+      printf 'MacBookAir15,13\n'
+    else
+      exit 1
+    fi
+    ;;
+  scutil)
+    case "${1:-}" in
+      --get)
+        case "${2:-}" in
+          ComputerName)
+            printf 'Fixture Support Mac\n'
+            ;;
+          LocalHostName)
+            printf 'Fixture-Support-Mac\n'
+            ;;
+          *)
+            exit 1
+            ;;
+        esac
+        ;;
+      --dns)
+        if [[ "${MAC_DIAGNOSTICS_FIXTURE_DNS_FAIL:-0}" == "1" ]]; then
+          printf 'scutil: Operation not permitted\n' >&2
+          exit 1
+        elif [[ "${MAC_DIAGNOSTICS_FIXTURE_DNS_MISSING:-0}" == "1" ]]; then
+          cat <<'DNS_FIXTURE'
+DNS configuration
+
+resolver #1
+  if_index : 11 (en0)
+  flags    : Request A records, Request AAAA records
+  reach    : 0x00000002 (Reachable)
+DNS_FIXTURE
+        else
+          cat <<'DNS_FIXTURE'
+DNS configuration
+
+resolver #1
+  nameserver[0] : 192.168.50.1
+  if_index : 11 (en0)
+  flags    : Request A records, Request AAAA records
+  reach    : 0x00000002 (Reachable)
+DNS_FIXTURE
+        fi
+        ;;
+      -r)
+        printf 'Reachable\n'
+        ;;
+      *)
+        exit 1
+        ;;
+    esac
+    ;;
+  sw_vers)
+    cat <<'VERS'
+ProductName:		macOS
+ProductVersion:		15.5
+BuildVersion:		24F74
+VERS
+    ;;
+  uptime)
+    printf '12:00  up 2 days,  4:03, 1 user, load averages: 1.00 1.20 1.40\n'
+    ;;
+  system_profiler)
+    case "${1:-}" in
+      SPHardwareDataType)
+        cat <<'HARDWARE'
+Hardware:
+
+    Hardware Overview:
+
+      Model Name: MacBook Air
+      Chip: Apple M3
+      Memory: 16 GB
+      Serial Number (system): ABC123SECRET
+      Hardware UUID: 123E4567-E89B-12D3-A456-426614174000
+      Provisioning UDID: 00008122-001A492A14A3001C
+HARDWARE
+        ;;
+      SPPowerDataType)
+        cat <<'POWER'
+Power:
+
+    Battery Information:
+
+      Health Information:
+        Cycle Count: 1201
+        Condition: Service Recommended
+        Maximum Capacity: 76%
+POWER
+        ;;
+      SPSoftwareDataType|SPStorageDataType|SPNetworkDataType)
+        printf '%s fixture details\n' "$1"
+        ;;
+      *)
+        printf 'Unknown profiler fixture: %s\n' "${1:-}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  df)
+    if [[ "${1:-}" == "-Pk" ]]; then
+      cat <<'DFPK'
+Filesystem 1024-blocks Used Available Capacity Mounted on
+/dev/disk3s1s1 245107196 223000000 10485760 91% /
+DFPK
+    else
+      cat <<'DFH'
+Filesystem      Size   Used  Avail Capacity Mounted on
+/dev/disk3s1s1  228G   207G    10G    91% /
+DFH
+    fi
+    ;;
+  diskutil)
+    case "${1:-}" in
+      list)
+        cat <<'DISKLIST'
+/dev/disk0 (internal, physical):
+   #: TYPE NAME SIZE IDENTIFIER
+   0: GUID_partition_scheme *251.0 GB disk0
+DISKLIST
+        ;;
+      info)
+        cat <<'DISKINFO'
+   Volume Name:               Macintosh HD
+   Volume UUID:               123E4567-E89B-12D3-A456-426614174001
+   Disk / Partition UUID:     123E4567-E89B-12D3-A456-426614174002
+   APFS Snapshot UUID:        123E4567-E89B-12D3-A456-426614174003
+DISKINFO
+        ;;
+      apfs)
+        printf 'APFS container fixture\n'
+        ;;
+      *)
+        printf 'diskutil fixture\n'
+        ;;
+    esac
+    ;;
+  pmset)
+    if [[ "${1:-}" == "-g" && "${2:-}" == "ps" ]]; then
+      printf "Now drawing from 'Battery Power'\n -InternalBattery-0\t43%%; discharging; 3:12 remaining present: true\n"
+    elif [[ "${1:-}" == "-g" && "${2:-}" == "batt" ]]; then
+      printf "Now drawing from 'Battery Power'\n -InternalBattery-0\t43%%; discharging; 3:12 remaining present: true\n"
+    elif [[ "${1:-}" == "-g" && "${2:-}" == "assertions" ]]; then
+      cat <<'ASSERTIONS'
+Assertion status system-wide:
+   PreventUserIdleSystemSleep    1
+   PreventUserIdleDisplaySleep   0
+   PreventSystemSleep            0
+
+Listed by owning process:
+   pid 101(coreaudiod): [0x0000000100008001] 00:10:00 NoIdleSleepAssertion named: "com.apple.audio.context"
+ASSERTIONS
+    elif [[ "${1:-}" == "-g" && "${2:-}" == "sched" ]]; then
+      printf 'No scheduled power events.\n'
+    elif [[ "${1:-}" == "-g" && "${2:-}" == "log" ]]; then
+      line_number=1
+      while [[ "$line_number" -le 125 ]]; do
+        printf '2026-06-01 12:%02d:00 - power log fixture line %03d\n' "$((line_number % 60))" "$line_number"
+        line_number=$((line_number + 1))
+      done
+    else
+      printf 'sleep 10\n'
+    fi
+    ;;
+  networksetup)
+    case "${1:-}" in
+      -listnetworkserviceorder)
+        cat <<'SERVICES'
+(1) Wi-Fi
+(Hardware Port: Wi-Fi, Device: en0)
+SERVICES
+        ;;
+      -listallhardwareports)
+        cat <<'PORTS'
+Hardware Port: Wi-Fi
+Device: en0
+Ethernet Address: AA:BB:CC:DD:EE:FF
+PORTS
+        ;;
+      *)
+        exit 1
+        ;;
+    esac
+    ;;
+  ifconfig)
+    if [[ "${MAC_DIAGNOSTICS_FIXTURE_NETWORK_OK:-0}" == "1" ]]; then
+      cat <<'IFCONFIG'
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	ether AA:BB:CC:DD:EE:FF
+	inet6 fe80::aede:48ff:fe00:1122%en0 prefixlen 64 secured scopeid 0x6
+	inet 192.168.50.25 netmask 0xffffff00 broadcast 192.168.50.255
+	status: active
+IFCONFIG
+    else
+      cat <<'IFCONFIG'
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	ether AA:BB:CC:DD:EE:FF
+	inet6 fe80::aede:48ff:fe00:1122%en0 prefixlen 64 secured scopeid 0x6
+	inet 192.168.50.25 netmask 0xffffff00 broadcast 192.168.50.255
+	status: active
+en5: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	inet 169.254.10.20 netmask 0xffff0000
+	status: active
+utun9: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
+IFCONFIG
+    fi
+    ;;
+  route)
+    cat <<'ROUTE'
+   route to: default
+destination: default
+    gateway: 192.168.50.1
+  interface: en0
+ROUTE
+    ;;
+  ping)
+    if [[ "${MAC_DIAGNOSTICS_FIXTURE_NETWORK_OK:-0}" == "1" ]]; then
+      cat <<'PING_FIXTURE'
+PING apple.com (17.253.144.10): 56 data bytes
+
+--- apple.com ping statistics ---
+20 packets transmitted, 20 packets received, 0.0% packet loss
+PING_FIXTURE
+    else
+      cat <<'PING_FIXTURE'
+PING apple.com (17.253.144.10): 56 data bytes
+
+--- apple.com ping statistics ---
+20 packets transmitted, 18 packets received, 10.0% packet loss
+PING_FIXTURE
+    fi
+    ;;
+  find)
+    args=" $* "
+    if [[ "$args" == *panic* ]]; then
+      printf '/Library/Logs/DiagnosticReports/fixture.panic\n'
+    elif [[ "$args" == *".crash"* ]]; then
+      printf '/Users/fixtureuser/Library/Logs/DiagnosticReports/FixtureApp.crash\n'
+    elif [[ "$args" == *".hang"* ]]; then
+      printf '/Users/fixtureuser/Library/Logs/DiagnosticReports/FixtureApp.hang\n'
+    fi
+    ;;
+  softwareupdate)
+    cat <<'UPDATE'
+Software Update Tool
+
+Finding available software
+Software Update found the following new or updated software:
+* Label: macOS Test Update-1.0
+	Title: macOS Test Update, Version: 1.0, Size: 1024KiB, Recommended: YES,
+UPDATE
+    ;;
+  last)
+    printf 'reboot    ~                         Mon Jun  1 10:00\n'
+    ;;
+  log)
+    cat <<'LOGS'
+2026-06-01 12:00:00.000000-0700 localhost FixtureApp[123]: fixture error from /Users/fixtureuser/Library/Application Support/Fixture
+LOGS
+    ;;
+  netstat)
+    printf 'Routing tables fixture\n'
+    ;;
+  mount)
+    printf '/dev/disk3s1s1 on / (apfs, sealed, local, read-only)\n'
+    ;;
+  *)
+    printf 'No fixture implemented for %s\n' "$cmd" >&2
+    exit 127
+    ;;
+esac
